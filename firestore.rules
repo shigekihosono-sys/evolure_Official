@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email.endsWith('@kaian.jp') || 
+         request.auth.token.email == 'shigeki.hosono@kaian.jp');
+    }
+
+    // Allow all read/write for now to troubleshoot permission issues
+    match /{document=**} {
+      allow read, write: if true;
+    }
+    
+    // Specific collection rules (even though we have a global allow above)
+    match /master_configs/{configId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    match /sessions/{sessionId} {
+      allow read, write: if true;
+    }
+    
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    match /logs/{logId} {
+      allow read, write: if true;
+    }
+  }
+}

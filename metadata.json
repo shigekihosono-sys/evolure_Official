@@ -1,0 +1,8 @@
+{
+  "name": "Evolure Personal Skin Lab Ver 10.0",
+  "description": "Gemini Flash ３.0",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "prompt": ""
+}

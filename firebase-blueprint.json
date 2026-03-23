@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "A skincare product (Serum or Ampoule)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["serum", "foundation", "performance"] },
+        "price": { "type": "number" },
+        "isPublished": { "type": "boolean" },
+        "ingredients": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["id", "name", "type", "price"]
+    },
+    "UserSession": {
+      "title": "User Session",
+      "description": "A user's consultation session",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "startTime": { "type": "number" },
+        "lastActive": { "type": "number" },
+        "status": { "type": "string" },
+        "currentStep": { "type": "string" },
+        "demographics": { "type": "object" }
+      },
+      "required": ["sessionId", "startTime"]
+    },
+    "LogEntry": {
+      "title": "Log Entry",
+      "description": "An event log entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "type": { "type": "string" },
+        "payload": { "type": "object" }
+      },
+      "required": ["id", "sessionId", "timestamp", "type"]
+    },
+    "MasterConfig": {
+      "title": "Master Configuration",
+      "description": "Dynamic configuration for consultation questions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category": { "type": "string", "enum": ["skin_concerns", "ideal_goals", "lifestyle_factors", "dissatisfactions", "trouble_history", "concern_timings", "current_lacks", "usage_durations"] },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "order": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["id", "category", "label"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Skincare products"
+    },
+    "/sessions/{sessionId}": {
+      "schema": "UserSession",
+      "description": "User consultation sessions"
+    },
+    "/logs/{logId}": {
+      "schema": "LogEntry",
+      "description": "Event logs"
+    },
+    "/master_configs/{configId}": {
+      "schema": "MasterConfig",
+      "description": "Dynamic consultation question items"
+    }
+  }
+}
