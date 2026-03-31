@@ -20,7 +20,7 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     app.use(express.static('dist'));
-    app.get('*', (req, res) => {
+    app.get('*all', (req, res) => {
       res.sendFile('dist/index.html', { root: '.' });
     });
   }
