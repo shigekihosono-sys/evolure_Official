@@ -19,7 +19,7 @@ export const MedicalChartSummary: React.FC<MedicalChartSummaryProps> = ({ report
             return (
                 <div className="flex flex-col items-center justify-center text-center py-12">
                     <LoadingSpinner size="md" />
-                    <p className="text-stone-500 font-medium text-lg mt-6 font-serif">Generating Diagnosis...</p>
+                    <p className="text-stone-500 font-medium text-lg mt-6 font-serif">診断カルテを生成中...</p>
                 </div>
             );
         }
@@ -31,7 +31,7 @@ export const MedicalChartSummary: React.FC<MedicalChartSummaryProps> = ({ report
                          <div className="p-6 bg-stone-50 rounded-xl border border-stone-100">
                             <h4 className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                                 <Sparkles size={14} />
-                                KEY INSIGHTS
+                                主要なインサイト
                             </h4>
                             <ul className="space-y-4">
                                 {report.summaryBullets.slice(0, 5).map((bullet, index) => (
@@ -47,7 +47,7 @@ export const MedicalChartSummary: React.FC<MedicalChartSummaryProps> = ({ report
                         onClick={onOpenModal}
                         className="group w-full bg-stone-900 text-white font-bold py-4 rounded-xl hover:bg-black transition-all duration-300 flex items-center justify-center gap-2 shadow-lg shadow-stone-900/20"
                     >
-                        <span>View Full Report</span> 
+                        <span>詳細レポートを表示</span> 
                         <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform"/>
                     </button>
                 </div>
@@ -56,14 +56,14 @@ export const MedicalChartSummary: React.FC<MedicalChartSummaryProps> = ({ report
 
         return (
             <div className="flex flex-col items-center justify-center text-center p-8 bg-stone-50 rounded-2xl border border-dashed border-stone-300">
-                <p className="font-serif font-semibold text-stone-700 text-lg mb-2">Update Required</p>
+                <p className="font-serif font-semibold text-stone-700 text-lg mb-2">更新が必要です</p>
                 <p className="text-stone-500 text-sm mb-6">プランの変更を反映するにはカルテを更新してください。</p>
                 <button
                     onClick={onRegenerate}
                     className="bg-white border border-stone-300 text-stone-800 font-bold py-3 px-6 rounded-xl hover:bg-stone-100 transition-all duration-300 flex items-center justify-center gap-2"
                 >
                     <RefreshCw size={18} />
-                    Refresh Diagnosis
+                    カルテを更新する
                 </button>
             </div>
         );
@@ -76,7 +76,7 @@ export const MedicalChartSummary: React.FC<MedicalChartSummaryProps> = ({ report
                     <div className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center text-stone-800 border border-stone-200">
                          <FileText size={20} />
                     </div>
-                    <h2 className="text-3xl font-serif font-bold text-stone-900">Diagnosis</h2>
+                    <h2 className="text-3xl font-serif font-bold text-stone-900">AI診断カルテ</h2>
                 </div>
                 <div className="text-[10px] font-bold text-stone-400 border border-stone-200 px-3 py-1 rounded-full tracking-wider uppercase bg-white">AI POWERED</div>
             </div>

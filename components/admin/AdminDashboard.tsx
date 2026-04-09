@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../../contexts/AdminContext';
-import { analyzeUserLogs } from '../../services/geminiService';
+import { analyzeUserLogs, analyzeIngredients, extractProductFromDocument } from '../../services/geminiService';
+import Papa from 'papaparse';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area } from 'recharts';
-import { Settings, BarChart2, Database, ArrowLeft, Loader2, Sparkles, PlusCircle, EyeOff, LogOut, Filter, Download, TrendingUp, Users, Target, Activity, X } from 'lucide-react';
+import { Settings, BarChart2, Database, ArrowLeft, Loader2, Sparkles, PlusCircle, EyeOff, LogOut, Filter, Download, TrendingUp, Users, Target, Activity, X, Upload, FileText, Check, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { ProductFormModal } from './ProductFormModal';
 import { MasterConfigTab } from './MasterConfigTab';
@@ -32,6 +33,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Serum | Ampoule | null>(null);
     const [modalType, setModalType] = useState<'serum' | 'foundation' | 'performance'>('serum');
+
+    // Import State
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [importType, setImportType] = useState<'csv' | 'pdf'>('csv');
+    const [importData, setImportData] = useState<any[]>([]);
+    const [isImporting, setIsImporting] = useState(false);
+    const [importError, setImportError] = useState<string | null>(null);
 
     const handleConnect = async () => {
         try {
@@ -179,9 +187,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
         setIsModalOpen(true);
     };
 
-    const handleSaveProduct = (product: Serum | Ampoule) => {
+    const handleSaveProduct = async (product: Serum | Ampoule) => {
         // Calculate scores and concentrations automatically based on ingredients
         const ingredients = (product as any).ingredients || [];
+        
+        // Trigger ingredient analysis to accumulate data in Firestore
+        if (ingredients.length > 0) {
+            try {
+                const ingredientNames = ingredients.map((ing: any) => ing.name).filter(Boolean);
+                if (ingredientNames.length > 0) {
+                    await analyzeIngredients(ingredientNames);
+                }
+            } catch (error) {
+                console.error('Failed to pre-analyze ingredients:', error);
+            }
+        }
         
         let processedProduct = { ...product };
         // FIX: Explicitly cast percentage to number to avoid type errors in arithmetic
@@ -192,15 +212,100 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
             serum.baseScores = calculateScoreFromIngredients(ingredients, true);
             serum.totalActiveConcentration = totalConcentration;
             
-            if (editingProduct) updateProduct('serum', serum);
-            else addProduct('serum', serum);
+            if (editingProduct) await updateProduct('serum', serum);
+            else await addProduct('serum', serum);
         } else {
             const ampoule = processedProduct as Ampoule;
             ampoule.boosts = calculateScoreFromIngredients(ingredients, false);
             ampoule.totalActiveConcentration = totalConcentration;
             
-            if (editingProduct) updateProduct(modalType, ampoule);
-            else addProduct(modalType, ampoule);
+            if (editingProduct) await updateProduct(modalType, ampoule);
+            else await addProduct(modalType, ampoule);
+        }
+    };
+
+    const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setImportError(null);
+        setIsImporting(true);
+
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+                setImportData(results.data);
+                setIsImporting(false);
+            },
+            error: (error) => {
+                setImportError(error.message);
+                setIsImporting(false);
+            }
+        });
+    };
+
+    const handlePDFUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setImportError(null);
+        setIsImporting(true);
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const base64 = event.target?.result as string;
+            try {
+                const result = await extractProductFromDocument(base64, file.type);
+                setImportData([result]);
+            } catch (error) {
+                setImportError(String(error));
+            } finally {
+                setIsImporting(false);
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const processImport = async () => {
+        setIsImporting(true);
+        try {
+            for (const item of importData) {
+                const type = item.type || 'serum';
+                const product: any = {
+                    id: item.id || `import-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    name: item.name || 'Unnamed Product',
+                    description: item.description || '',
+                    price: Number(item.price) || 0,
+                    ingredients: item.ingredients || [],
+                    category: item.category || '',
+                    targetConcerns: item.targetConcerns || [],
+                    isPublished: false,
+                    isNew: true,
+                    image: item.image || 'https://picsum.photos/seed/product/400/400'
+                };
+
+                // Auto-calculate scores
+                const ingredients = product.ingredients || [];
+                const totalConcentration = ingredients.reduce((sum: number, ing: any) => sum + (Number(ing.percentage) || 0), 0);
+                
+                if (type === 'serum') {
+                    product.baseScores = calculateScoreFromIngredients(ingredients, true);
+                    product.totalActiveConcentration = totalConcentration;
+                    await addProduct('serum', product as Serum);
+                } else {
+                    product.boosts = calculateScoreFromIngredients(ingredients, false);
+                    product.totalActiveConcentration = totalConcentration;
+                    await addProduct(type as 'foundation' | 'performance', product as Ampoule);
+                }
+            }
+            setIsImportModalOpen(false);
+            setImportData([]);
+            alert('Import completed successfully');
+        } catch (error) {
+            setImportError(String(error));
+        } finally {
+            setIsImporting(false);
         }
     };
 
@@ -600,7 +705,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
 
                     {activeTab === 'products' && (
                         <div className="space-y-8 animate-fade-in">
-                            <h2 className="text-2xl font-serif font-bold text-stone-900">Product Management (CMS)</h2>
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-2xl font-serif font-bold text-stone-900">Product Management (CMS)</h2>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => { setImportType('csv'); setIsImportModalOpen(true); }}
+                                        className="text-xs font-bold bg-white border border-stone-200 text-stone-600 px-4 py-2 rounded-xl hover:bg-stone-50 flex items-center gap-2"
+                                    >
+                                        <Upload size={14} /> Import CSV
+                                    </button>
+                                    <button 
+                                        onClick={() => { setImportType('pdf'); setIsImportModalOpen(true); }}
+                                        className="text-xs font-bold bg-white border border-stone-200 text-stone-600 px-4 py-2 rounded-xl hover:bg-stone-50 flex items-center gap-2"
+                                    >
+                                        <FileText size={14} /> Import PDF/Image
+                                    </button>
+                                </div>
+                            </div>
                             
                             <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm">
                                 <div className="flex justify-between items-center mb-4">
@@ -733,6 +854,117 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onExit }) => {
                 initialData={editingProduct}
                 type={modalType}
             />
+
+            {/* Import Modal */}
+            {isImportModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+                        <div className="p-6 border-b border-stone-100 flex justify-between items-center">
+                            <div>
+                                <h3 className="text-xl font-serif font-bold text-stone-900">
+                                    {importType === 'csv' ? 'CSV Import' : 'AI PDF/Image Import'}
+                                </h3>
+                                <p className="text-sm text-stone-500">
+                                    {importType === 'csv' ? 'Upload a CSV file to bulk import products' : 'Upload a PDF or image to extract product data using AI'}
+                                </p>
+                            </div>
+                            <button onClick={() => { setIsImportModalOpen(false); setImportData([]); }} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="flex-grow overflow-y-auto p-8">
+                            {importData.length === 0 ? (
+                                <div className="border-2 border-dashed border-stone-200 rounded-3xl p-20 text-center space-y-4">
+                                    <div className="w-16 h-16 bg-stone-50 rounded-full flex items-center justify-center mx-auto">
+                                        {importType === 'csv' ? <Upload className="text-stone-400" /> : <FileText className="text-stone-400" />}
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-stone-900">Click to upload or drag and drop</p>
+                                        <p className="text-sm text-stone-500">
+                                            {importType === 'csv' ? 'CSV files only' : 'PDF, JPG, PNG files'}
+                                        </p>
+                                    </div>
+                                    <input 
+                                        type="file" 
+                                        accept={importType === 'csv' ? '.csv' : '.pdf,image/*'} 
+                                        onChange={importType === 'csv' ? handleCSVUpload : handlePDFUpload}
+                                        className="hidden" 
+                                        id="import-upload" 
+                                    />
+                                    <label 
+                                        htmlFor="import-upload"
+                                        className="inline-block bg-stone-900 text-white font-bold py-3 px-8 rounded-xl hover:bg-black cursor-pointer transition-colors"
+                                    >
+                                        Select File
+                                    </label>
+                                    {isImporting && (
+                                        <div className="flex items-center justify-center gap-2 text-stone-500 mt-4">
+                                            <Loader2 className="animate-spin" size={16} />
+                                            <span>Processing file...</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-center">
+                                        <h4 className="font-bold text-stone-900">Preview ({importData.length} items)</h4>
+                                        <button onClick={() => setImportData([])} className="text-xs font-bold text-stone-500 hover:text-stone-900">Clear and re-upload</button>
+                                    </div>
+                                    <div className="border border-stone-200 rounded-2xl overflow-hidden">
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-stone-50 border-b border-stone-200">
+                                                <tr>
+                                                    <th className="px-4 py-3 font-bold text-stone-600">Type</th>
+                                                    <th className="px-4 py-3 font-bold text-stone-600">Name</th>
+                                                    <th className="px-4 py-3 font-bold text-stone-600">Price</th>
+                                                    <th className="px-4 py-3 font-bold text-stone-600">Ingredients</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-stone-100">
+                                                {importData.map((item, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="px-4 py-3 capitalize">{item.type || 'serum'}</td>
+                                                        <td className="px-4 py-3 font-medium">{item.name}</td>
+                                                        <td className="px-4 py-3">{Number(item.price).toLocaleString()}円</td>
+                                                        <td className="px-4 py-3 text-xs text-stone-500">
+                                                            {Array.isArray(item.ingredients) ? item.ingredients.length : 0} ingredients
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {importError && (
+                                <div className="mt-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600">
+                                    <AlertCircle size={20} />
+                                    <p className="text-sm font-medium">{importError}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t border-stone-100 bg-stone-50 flex justify-end gap-3">
+                            <button 
+                                onClick={() => { setIsImportModalOpen(false); setImportData([]); }}
+                                className="px-6 py-3 font-bold text-stone-500 hover:text-stone-900 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={processImport}
+                                disabled={importData.length === 0 || isImporting}
+                                className="bg-stone-900 text-white font-bold py-3 px-10 rounded-xl hover:bg-black transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {isImporting ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
+                                Confirm and Import
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

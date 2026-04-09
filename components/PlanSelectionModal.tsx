@@ -173,7 +173,7 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
             )}
             <p className={`text-sm text-stone-500 mb-4 ${isFoundationSelectionDisabled ? 'opacity-50' : ''}`}>
                 {isFreeFoundationEligible 
-                    ? <span className="font-bold text-stone-800">1つまで無料。2つめからは990円(税抜)です。</span> 
+                    ? <span className="font-bold text-stone-800">1つまで無料。2つめからは1,089円(税込)です。</span> 
                     : '有料アンプル選択時は無料枠は適用されません。'}
                 複数選択可能です。
             </p>
@@ -342,7 +342,7 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
                         <div className="mb-6">
                             <h3 className="text-lg font-serif font-bold text-stone-900 mb-1 flex items-center gap-2">
                                 <TrendingUp size={20} className="text-stone-800"/>
-                                Analysis Data
+                                効果分析データ
                             </h3>
                             <p className="text-xs text-stone-500">プラン変更による効果の変化をリアルタイムに確認できます。</p>
                         </div>
@@ -354,12 +354,12 @@ export const PlanSelectionModal: React.FC<PlanSelectionModalProps> = ({
                         {selectedSerum && (
                             <div className="space-y-4">
                                 <div className="p-4 bg-white rounded-xl border border-stone-100 shadow-sm">
-                                    <p className="text-xs font-bold text-stone-400 uppercase mb-1">BASE SERUM</p>
+                                    <p className="text-xs font-bold text-stone-400 uppercase mb-1">ベース美容液</p>
                                     <p className="font-bold text-stone-800 text-sm">{selectedSerum.name}</p>
                                 </div>
                                 {(selectedFoundationAmpoules.length > 0 || selectedPerformanceAmpoules.length > 0) && purchaseType === 'subscription' && (
                                     <div className="p-4 bg-white rounded-xl border border-stone-100 shadow-sm">
-                                        <p className="text-xs font-bold text-stone-400 uppercase mb-2">ADDED AMPOULES</p>
+                                        <p className="text-xs font-bold text-stone-400 uppercase mb-2">追加アンプル</p>
                                         <ul className="space-y-2">
                                             {[...selectedFoundationAmpoules, ...selectedPerformanceAmpoules].map(a => (
                                                 <li key={a.id} className="flex items-center gap-2 text-xs font-medium text-stone-700">

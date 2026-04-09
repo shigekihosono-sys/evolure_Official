@@ -11,6 +11,20 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  app.get("/api/ingredient-links", async (req, res) => {
+    try {
+      const response = await fetch('https://kaian.jp/assets/data/ingredient-links.json');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch: ${response.statusText}`);
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error('Error fetching ingredient links:', error);
+      res.status(500).json({ error: 'Failed to fetch ingredient links' });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

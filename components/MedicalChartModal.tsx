@@ -1,7 +1,7 @@
 
 import React, { useMemo, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { X, UserCircle, Beaker, FileText, Lightbulb, TrendingUp, SlidersHorizontal, ShoppingCart, Clock, List, FileBarChart } from 'lucide-react';
+import { X, UserCircle, Beaker, FileText, Lightbulb, TrendingUp, SlidersHorizontal, ShoppingCart, Clock, List, FileBarChart, ExternalLink } from 'lucide-react';
 import { CartItem, MedicalChartReport, Score, IngredientAnalysis, Serum, Ampoule, AnalyzedCompetitor } from '../types';
 import { KNOWLEDGE_SCALE, SCORE_CATEGORY_KEYS } from '../constants';
 import { RadarChartComponent } from './RadarChartComponent';
@@ -29,10 +29,48 @@ interface MedicalChartModalProps {
 }
 
 // Use any[] to handle potential schema mismatches from AI response robustly
-const IngredientTable: React.FC<{ ingredients: any[] }> = ({ ingredients }) => {
+const IngredientTable: React.FC<{ ingredients: any[], ingredientLinks: any }> = ({ ingredients, ingredientLinks }) => {
     if (!Array.isArray(ingredients) || ingredients.length === 0) {
         return <p className="text-stone-500 text-sm p-2">成分データの解析待ちです。</p>;
     }
+
+    const getIngredientLink = (name: string) => {
+        if (!ingredientLinks || !name) return null;
+        const normalizedName = name.trim().toLowerCase();
+        
+        // Case 1: ingredientLinks is a direct mapping object { "Name": "Link" }
+        if (typeof ingredientLinks === 'object' && !Array.isArray(ingredientLinks)) {
+            if (ingredientLinks[name.trim()]) return ingredientLinks[name.trim()];
+            
+            const entry = Object.entries(ingredientLinks).find(([key]) => 
+                key.trim().toLowerCase() === normalizedName
+            );
+            if (entry) return entry[1] as string;
+        }
+        
+        // Case 2: ingredientLinks is an array of objects (as seen in the user's JSON)
+        if (Array.isArray(ingredientLinks)) {
+            const found = ingredientLinks.find(item => {
+                // Check all possible name fields in the JSON
+                const possibleNames = [
+                    item.ja_name,
+                    item.en_name,
+                    item.full_name,
+                    item.name,
+                    item.Name,
+                    item.id,
+                    item.ingredientName,
+                    item.title
+                ].filter(Boolean).map(n => String(n).trim().toLowerCase());
+                
+                return possibleNames.includes(normalizedName);
+            });
+            // Return the URL field which is present in the JSON
+            return found?.url || found?.link || found?.href || null;
+        }
+        
+        return null;
+    };
     
     return (
         <div className="my-[-1rem] py-1">
@@ -52,6 +90,7 @@ const IngredientTable: React.FC<{ ingredients: any[] }> = ({ ingredients }) => {
                         
                         // Normalize keys to handle potential case sensitivity or variations
                         const name = ing.name || ing.Name || ing.ingredientName || '-';
+                        const link = getIngredientLink(name);
                         
                         let desc = ing.description || ing.Description || 
                                      ing.functions || ing.Functions || 
@@ -74,14 +113,47 @@ const IngredientTable: React.FC<{ ingredients: any[] }> = ({ ingredients }) => {
 
                         return (
                             <tr key={index} className="border-b border-stone-100">
-                                <td className="p-2 pl-0 font-medium text-stone-800 align-top break-words">{name}</td>
+                                <td className="p-2 pl-0 font-medium text-stone-800 align-top break-words">
+                                    {link ? (
+                                        <a 
+                                            href={link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            className="text-stone-900 underline decoration-stone-300 underline-offset-4 hover:decoration-stone-900 transition-colors"
+                                        >
+                                            {name}
+                                        </a>
+                                    ) : (
+                                        name
+                                    )}
+                                </td>
                                 <td className="p-2 text-stone-600 align-top break-words leading-relaxed">{desc}</td>
-                                <td className="p-2 pr-0 text-stone-500 align-top break-words">{time}</td>
+                                <td className="p-2 pr-0 text-stone-500 align-top break-words">
+                                    {link ? (
+                                        <>
+                                            <span className="leading-relaxed">{time}</span>
+                                            <a 
+                                                href={link} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                className="ml-1 inline-flex items-center text-stone-400 hover:text-stone-600 transition-colors"
+                                                title="詳細を確認する"
+                                            >
+                                                <ExternalLink size={12} className="inline-block align-middle" />
+                                            </a>
+                                        </>
+                                    ) : (
+                                        <span className="text-stone-300">-</span>
+                                    )}
+                                </td>
                             </tr>
                         );
                     })}
                 </tbody>
             </table>
+            <p className="text-[10px] text-stone-400 mt-3 leading-relaxed px-1">
+                ※時間軸は成分の一般的な特性に基づく目安であり、効果を保証するものではありません。お肌の状態や使用環境により個人差があります。
+            </p>
         </div>
     );
 };
@@ -91,6 +163,25 @@ export const MedicalChartModal: React.FC<MedicalChartModalProps> = ({ isOpen, on
   const modalRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [mobileTab, setMobileTab] = useState<'summary' | 'report'>('summary');
+  const [ingredientLinks, setIngredientLinks] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchLinks = async () => {
+      try {
+        const response = await fetch('/api/ingredient-links');
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Fetched ingredient links:', data);
+          setIngredientLinks(data);
+        } else {
+          console.error('Failed to fetch ingredient links:', response.statusText);
+        }
+      } catch (error) {
+        console.error('Failed to fetch ingredient links:', error);
+      }
+    };
+    fetchLinks();
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -253,32 +344,30 @@ export const MedicalChartModal: React.FC<MedicalChartModalProps> = ({ isOpen, on
                 </div>
             </section>
              <section>
-                {userInfo.consultationType === 'concerns' || (userInfo.consultationType === 'ideal' && userInfo.skinConcerns && Object.keys(userInfo.skinConcerns).length > 0) ? (
+                {userInfo.skinConcerns && Object.keys(userInfo.skinConcerns).filter(k => userInfo.skinConcerns![k] > 0).length > 0 ? (
                     <>
                         <h3 className="text-lg font-serif font-bold text-stone-900 mb-3 md:mb-4">主な肌悩み</h3>
                         <div className="space-y-2 p-4 md:p-5 bg-white rounded-2xl border border-stone-100 shadow-sm">
-                            {userInfo.skinConcerns && Object.keys(userInfo.skinConcerns).length > 0 ? (
-                                Object.entries(userInfo.skinConcerns)
-                                    .sort((a, b) => Number(b[1]) - Number(a[1]))
-                                    .map(([concern, severity]) => (
-                                        <div key={concern} className="flex justify-between items-center text-xs md:text-sm">
-                                            <span className="text-stone-600">{concern}</span>
-                                            <span className="font-bold text-stone-900 bg-stone-100 px-2 py-0.5 rounded-md">Lv. {severity}</span>
-                                        </div>
-                                    ))
-                            ) : (
-                                <p className="text-stone-400 text-sm">悩みは選択されていません</p>
-                            )}
+                            {Object.entries(userInfo.skinConcerns)
+                                .filter(([_, v]) => v > 0)
+                                .sort((a, b) => Number(b[1]) - Number(a[1]))
+                                .map(([concern, severity]) => (
+                                    <div key={concern} className="flex justify-between items-center text-xs md:text-sm">
+                                        <span className="text-stone-600">{concern}</span>
+                                        <span className="font-bold text-stone-900 bg-stone-100 px-2 py-0.5 rounded-md">Lv. {severity}</span>
+                                    </div>
+                                ))
+                            }
                         </div>
                     </>
-                ) : (
+                ) : userInfo.consultationType === 'ideal' || userInfo.consultationType === 'investigate' ? (
                      <>
                         <h3 className="text-lg font-serif font-bold text-stone-900 mb-3 md:mb-4">なりたい肌の目標</h3>
                         <div className="p-4 md:p-5 bg-white rounded-2xl border border-stone-100 shadow-sm">
                            <p className="font-semibold text-stone-800 text-sm md:text-md">{userInfo.idealSkinGoal || '未設定'}</p>
                         </div>
                     </>
-                )}
+                ) : null}
             </section>
             <section>
               <h3 className="text-lg font-serif font-bold text-stone-900 mb-3 md:mb-4">EVOLURE パーソナル処方</h3>
@@ -291,7 +380,7 @@ export const MedicalChartModal: React.FC<MedicalChartModalProps> = ({ isOpen, on
                         {item.product.price > 0 ? (
                           <>
                             {item.product.price.toLocaleString()}
-                            <span className="text-xs font-normal text-stone-400 ml-0.5">円(税抜)</span>
+                            <span className="text-xs font-normal text-stone-400 ml-0.5">円(税込)</span>
                           </>
                         ) : '無料'}
                       </span>
@@ -302,7 +391,7 @@ export const MedicalChartModal: React.FC<MedicalChartModalProps> = ({ isOpen, on
                   <span className="font-bold text-sm text-stone-500">合計金額</span>
                   <span className="font-bold text-lg md:text-xl text-stone-900">
                     {total.toLocaleString()}
-                    <span className="text-xs font-normal text-stone-400 ml-1">円(税抜)</span>
+                    <span className="text-xs font-normal text-stone-400 ml-1">円(税込)</span>
                   </span>
                 </div>
                 <button 
@@ -387,13 +476,13 @@ export const MedicalChartModal: React.FC<MedicalChartModalProps> = ({ isOpen, on
                 
                 {Array.isArray(report.serumIngredientAnalysis) && report.serumIngredientAnalysis.length > 0 && (
                     <ReportSection icon={<Beaker size={20}/>} title="美容液の主要有効成分">
-                        <IngredientTable ingredients={report.serumIngredientAnalysis} />
+                        <IngredientTable ingredients={report.serumIngredientAnalysis} ingredientLinks={ingredientLinks} />
                     </ReportSection>
                 )}
 
                 {Array.isArray(report.ampouleIngredientAnalysis) && report.ampouleIngredientAnalysis.length > 0 && (
                     <ReportSection icon={<Lightbulb size={20}/>} title="アンプルの主要有効成分">
-                        <IngredientTable ingredients={report.ampouleIngredientAnalysis} />
+                        <IngredientTable ingredients={report.ampouleIngredientAnalysis} ingredientLinks={ingredientLinks} />
                     </ReportSection>
                 )}
               </div>

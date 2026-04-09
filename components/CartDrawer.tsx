@@ -11,15 +11,15 @@ interface CartDrawerProps {
 }
 
 export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, cart, onRemoveItem }) => {
-  // FIX: priceAtPurchase が 0 の場合に正しく計算されるよう ?? (Nullish coalescing) を使用
-  const subtotal = cart.reduce((sum, item) => {
+  // subtotal is now tax-inclusive
+  const total = cart.reduce((sum, item) => {
     const price = item.priceAtPurchase ?? item.product.price;
     return sum + (price * item.quantity);
   }, 0);
 
-  // 消費税計算 (10%)
-  const tax = Math.round(subtotal * 0.1);
-  const totalWithTax = subtotal + tax;
+  // 内消費税計算 (10%)
+  const tax = Math.round(total * 10 / 110);
+  const net = total - tax;
 
   if (!isOpen) return null;
 
@@ -34,7 +34,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, cart, o
       {/* Drawer */}
       <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col transform transition-transform animate-slide-in-right">
         <div className="p-6 flex items-center justify-between border-b border-stone-100 bg-white/95 backdrop-blur-sm z-10">
-          <h2 className="text-2xl font-serif font-bold text-stone-900">Shopping Cart</h2>
+          <h2 className="text-2xl font-serif font-bold text-stone-900">ショッピングカート</h2>
           <button onClick={onClose} className="p-2 hover:bg-stone-100 rounded-full transition-colors text-stone-400 hover:text-stone-900">
             <X size={24} />
           </button>
@@ -54,7 +54,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, cart, o
                     <div className="flex justify-between items-end">
                         <p className="text-xs text-stone-500">数量: {item.quantity}</p>
                         <p className="text-sm font-bold text-stone-900">
-                            {(item.priceAtPurchase !== undefined ? item.priceAtPurchase : item.product.price).toLocaleString()} 円(税抜)
+                            {(item.priceAtPurchase !== undefined ? item.priceAtPurchase : item.product.price).toLocaleString()} 円(税込)
                         </p>
                     </div>
                   </div>
@@ -73,8 +73,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, cart, o
         {cart.length > 0 && (
           <div className="p-6 bg-white border-t border-stone-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 space-y-3">
             <div className="flex justify-between items-center text-sm text-stone-500">
-              <span>小計 (税抜)</span>
-              <span>{subtotal.toLocaleString()} 円</span>
+              <span>税抜価格</span>
+              <span>{net.toLocaleString()} 円</span>
             </div>
             <div className="flex justify-between items-center text-sm text-stone-500">
               <span>消費税 (10%)</span>
@@ -84,14 +84,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, cart, o
               <span className="font-bold text-stone-900 text-lg">合計 (税込)</span>
               <div className="text-right">
                 <p className="text-3xl font-bold text-stone-900 leading-none">
-                    {totalWithTax.toLocaleString()}
+                    {total.toLocaleString()}
                     <span className="text-xs font-normal text-stone-500 ml-1">円</span>
                 </p>
                 <p className="text-[10px] text-stone-400 mt-1 uppercase tracking-wider font-bold">Tax Included / 税込価格</p>
               </div>
             </div>
             <button className="w-full mt-4 bg-stone-900 text-white font-bold py-4 rounded-xl hover:bg-black transition-all shadow-lg shadow-stone-900/10">
-              Checkout
+              レジに進む
             </button>
           </div>
         )}

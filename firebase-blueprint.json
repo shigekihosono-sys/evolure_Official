@@ -1,5 +1,20 @@
 {
   "entities": {
+    "Ingredient": {
+      "title": "Ingredient",
+      "description": "Analyzed ingredient information including efficacy, evidence, and timeframe.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique ID (usually the ingredient name in lowercase/slugified)" },
+        "name": { "type": "string", "description": "Ingredient name (Japanese)" },
+        "enName": { "type": "string", "description": "Ingredient name (English)" },
+        "function": { "type": "string", "description": "Primary function/efficacy" },
+        "evidence": { "type": "string", "description": "Scientific evidence or mechanism" },
+        "timeframe": { "type": "string", "description": "Expected timeframe for results" },
+        "lastAnalyzed": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "function"]
+    },
     "Product": {
       "title": "Product",
       "description": "A skincare product (Serum or Ampoule)",
@@ -55,9 +70,27 @@
         "metadata": { "type": "object" }
       },
       "required": ["id", "category", "label"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Application user profile with role-based access control.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "lastLogin": { "type": "number" }
+      },
+      "required": ["uid", "email", "role"]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and permissions"
+    },
     "/products/{productId}": {
       "schema": "Product",
       "description": "Skincare products"
@@ -73,6 +106,10 @@
     "/master_configs/{configId}": {
       "schema": "MasterConfig",
       "description": "Dynamic consultation question items"
+    },
+    "/ingredients/{ingredientId}": {
+      "schema": "Ingredient",
+      "description": "Analyzed ingredient data for reuse across products."
     }
   }
 }

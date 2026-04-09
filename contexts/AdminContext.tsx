@@ -147,14 +147,50 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             setUser(currentUser);
-            if (currentUser && currentUser.email?.endsWith('@kaian.jp')) {
-                setIsAdmin(true);
+            if (currentUser) {
+                const userDocRef = doc(db, 'users', currentUser.uid);
+                try {
+                    // Try to get the user document
+                    const userSnap = await getDocs(query(collection(db, 'users'))).then(snap => snap.docs.find(d => d.id === currentUser.uid)).catch(() => null);
+                    
+                    // Note: getDocFromServer is better for single doc, but let's use a simple approach
+                    // Actually, let's just use a listener for the user doc to be reactive
+                    const userUnsubscribe = onSnapshot(userDocRef, async (docSnap) => {
+                        if (!docSnap.exists()) {
+                            // Bootstrap user
+                            const isMasterAdmin = currentUser.email === 'shigeki.hosono@kaian.jp';
+                            const role = isMasterAdmin ? 'admin' : 'user';
+                            const userData = {
+                                uid: currentUser.uid,
+                                email: currentUser.email,
+                                role: role,
+                                displayName: currentUser.displayName,
+                                photoURL: currentUser.photoURL,
+                                lastLogin: Date.now()
+                            };
+                            await setDoc(userDocRef, sanitizeForFirestore(userData)).catch(console.error);
+                            setIsAdmin(role === 'admin');
+                        } else {
+                            const data = docSnap.data();
+                            setIsAdmin(data.role === 'admin');
+                        }
+                        setIsAuthLoading(false);
+                    }, (error) => {
+                        console.error("User doc listener error:", error);
+                        setIsAuthLoading(false);
+                    });
+                    
+                    return () => userUnsubscribe();
+                } catch (error) {
+                    console.error("Auth state change error:", error);
+                    setIsAuthLoading(false);
+                }
             } else {
                 setIsAdmin(false);
+                setIsAuthLoading(false);
             }
-            setIsAuthLoading(false);
         });
         return () => unsubscribe();
     }, []);

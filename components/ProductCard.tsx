@@ -60,7 +60,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect, isS
       <div className="px-6 py-4 border-t border-stone-100 bg-stone-50/50 mt-auto">
         <p className="text-xl font-bold text-stone-900 text-right tracking-tight">
             {product.price.toLocaleString()}
-            <span className="text-sm font-normal text-stone-500 ml-1">円(税抜)</span>
+            <span className="text-sm font-normal text-stone-500 ml-1">円(税込)</span>
         </p>
       </div>
     </div>

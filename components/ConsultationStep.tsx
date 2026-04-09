@@ -15,17 +15,8 @@ export const ConsultationStep: React.FC<ConsultationStepProps> = ({ step, title,
       </div>
       <h2 className="text-2xl font-bold text-stone-900 font-serif tracking-tight">{title}</h2>
     </div>
-    <div className="pl-14">
+    <div className="pl-4 md:pl-14">
         {children}
     </div>
-    <style>{`
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in-up {
-            animation: fadeInUp 0.5s ease-out forwards;
-        }
-    `}</style>
   </div>
 );

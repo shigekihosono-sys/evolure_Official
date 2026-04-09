@@ -96,7 +96,7 @@ export const AmpouleCard: React.FC<AmpouleCardProps> = ({ ampoule, onSelect, isS
           {priceToShow > 0 ? (
             <>
               {priceToShow.toLocaleString()}円
-              <span className="text-xs font-normal text-stone-400 ml-1">(税抜)</span>
+              <span className="text-xs font-normal text-stone-400 ml-1">(税込)</span>
             </>
           ) : (
             '無料'

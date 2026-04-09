@@ -3,12 +3,12 @@ import { Toaster, toast } from 'react-hot-toast';
 import { ShoppingCart, Bot, X, Lightbulb, CheckCircle, Circle, PlusCircle, Send, RefreshCw, Beaker, User, SlidersHorizontal, FileText, ArrowRight, Camera, BarChart2, Radar, Target, Search, UserCircle, TrendingUp, FlaskConical, Video, Edit, Sparkles, ChevronRight, Lock, Cylinder, FileDigit, CreditCard, Repeat } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-import { Serum, Ampoule, CartItem, Score, Product, MedicalChartReport, AnalyzedCompetitor, IngredientLabAnalysis, AdvancedProductAnalysis, FullConsultationResponse, ChatMessage } from './types';
+import { Serum, Ampoule, CartItem, Score, Product, MedicalChartReport, AnalyzedCompetitor, IngredientLabAnalysis, AdvancedProductAnalysis, FullConsultationResponse, ChatMessage, ConsultationInput } from './types';
 import {
   AGE_GROUPS, SKIN_CONCERNS, SCORE_CATEGORY_KEYS, SEVERITY_SCALE, KNOWLEDGE_SCALE, IDEAL_SKIN_GOALS, LIFESTYLE_FACTORS, INVESTIGATION_DISSATISFACTIONS, SKIN_TYPES, TROUBLE_HISTORY_OPTIONS, CONCERN_TIMINGS, CURRENT_LACKS, PRODUCT_USAGE_DURATIONS,
   SERUM_A as DEFAULT_SERUM_A, SERUM_B as DEFAULT_SERUM_B, SERUM_C as DEFAULT_SERUM_C
 } from './constants';
-import { sendChatMessageStream, analyzeCompetitorProduct, analyzeSkinFromVideo, ConsultationInput, analyzeProductsFromPhoto, validateVideoForSkinAnalysis, analyzeIngredients, analyzeProductAdvanced, createChatSession, runFullConsultation, regenerateMedicalChart, extractScoresFromText } from './services/geminiService';
+import { sendChatMessageStream, analyzeCompetitorProduct, analyzeSkinFromVideo, analyzeProductsFromPhoto, validateVideoForSkinAnalysis, analyzeIngredients, analyzeProductAdvanced, createChatSession, runFullConsultation, regenerateMedicalChart, extractScoresFromText } from './services/geminiService';
 import { RadarChartComponent } from './components/RadarChartComponent';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { MedicalChartModal } from './components/MedicalChartModal';
@@ -310,7 +310,6 @@ export const App: React.FC = () => {
     return list.length > 0 ? list : PRODUCT_USAGE_DURATIONS;
   }, [masterConfigs]);
 
-  const [secretCounter, setSecretCounter] = useState(0);
   const [activeChart, setActiveChart] = useState<'radar' | 'bar'>('radar');
 
   useEffect(() => {
@@ -368,13 +367,7 @@ export const App: React.FC = () => {
   };
   
   const handleLogoClick = () => {
-      setSecretCounter(prev => {
-          if (prev + 1 >= 5) {
-              dispatch({ type: 'SET_VIEW', payload: 'admin' });
-              return 0;
-          }
-          return prev + 1;
-      });
+      dispatch({ type: 'SET_VIEW', payload: 'welcome' });
   };
 
   const radarChartData = useMemo(() => {
@@ -407,11 +400,6 @@ export const App: React.FC = () => {
   const handleSendChatMessage = async () => {
     if (!state.chatInput.trim()) return;
     const userMessage = state.chatInput;
-    if (userMessage === '/admin') {
-        dispatch({ type: 'SET_CHAT_INPUT', payload: '' });
-        dispatch({ type: 'SET_VIEW', payload: 'admin' });
-        return;
-    }
     dispatch({ type: 'SET_CHAT_INPUT', payload: '' });
     dispatch({ type: 'ADD_CHAT_MESSAGE', payload: { role: 'user', content: userMessage, timestamp: Date.now() } });
     dispatch({ type: 'SET_CHAT_LOADING', payload: true });
@@ -453,8 +441,17 @@ export const App: React.FC = () => {
       dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
       dispatch({ type: 'SET_MEDICAL_CHART_LOADING', payload: true });
       logEvent(currentSessionId, 'GENERATE_PLAN', { input });
+      
+      // Prepare dynamic data from admin settings
+      const allDynamicProducts = [...products.serums, ...products.foundationAmpoules, ...products.performanceAmpoules];
+      const dynamicMasterConfigs: Record<string, string[]> = {};
+      masterConfigs.forEach(config => {
+          if (!dynamicMasterConfigs[config.category]) dynamicMasterConfigs[config.category] = [];
+          if (config.isActive) dynamicMasterConfigs[config.category].push(config.label);
+      });
+
       try {
-        const response = await runFullConsultation(input);
+        const response = await runFullConsultation(input, allDynamicProducts, dynamicMasterConfigs);
         if (response && response.recommendations && response.recommendations.serumId) {
             const serum = products.serums.find(s => s.id === response.recommendations.serumId && s.isPublished !== false);
             if (serum) dispatch({ type: 'SET_SELECTED_SERUM', payload: serum });
@@ -466,7 +463,26 @@ export const App: React.FC = () => {
                     if (pAmp) dispatch({ type: 'TOGGLE_PERFORMANCE_AMPOULE', payload: pAmp });
                 });
             }
-            dispatch({ type: 'SET_MEDICAL_CHART_REPORT', payload: response.medicalChartReport });
+            // Set medical chart report with fallback
+            if (response.medicalChartReport && response.medicalChartReport.summaryBullets) {
+                dispatch({ type: 'SET_MEDICAL_CHART_REPORT', payload: response.medicalChartReport });
+            } else {
+                // Fallback: If chart is missing or incomplete, regenerate it automatically
+                const serum = products.serums.find(s => s.id === response.recommendations.serumId);
+                const ampouleIds = response.recommendations.ampouleIds || [];
+                const ampoules = [
+                    ...products.foundationAmpoules.filter(a => ampouleIds.includes(a.id)),
+                    ...products.performanceAmpoules.filter(a => ampouleIds.includes(a.id))
+                ];
+                if (serum) {
+                    try {
+                        const report = await regenerateMedicalChart(input, serum, ampoules, allDynamicProducts);
+                        dispatch({ type: 'SET_MEDICAL_CHART_REPORT', payload: report });
+                    } catch (err) {
+                        console.error("Failed to regenerate missing medical chart:", err);
+                    }
+                }
+            }
             if (response.competitorAnalysis) dispatch({ type: 'SET_ANALYZED_USER_PRODUCTS', payload: response.competitorAnalysis });
             dispatch({ type: 'SET_CART', payload: createCartFromCurrentState() });
         } else throw new Error("Invalid response");
@@ -500,6 +516,7 @@ export const App: React.FC = () => {
               currentUserProducts: state.currentUserProducts,
               dissatisfactions: Object.keys(state.dissatisfactions),
               idealSkin: idealGoalsList.find(g => g.id === state.selectedIdealGoal)?.label || '',
+              skinConcerns: state.skinConcerns,
               productUsageDuration: state.productUsageDuration
           } : {}),
       } as any;
@@ -528,7 +545,14 @@ export const App: React.FC = () => {
       dispatch({ type: 'SET_CAMERA_OPEN', payload: false });
   };
 
-  if (state.currentView === 'admin') return <AdminDashboard onExit={() => dispatch({ type: 'SET_VIEW', payload: 'welcome' })} />;
+  if (state.currentView === 'admin') {
+      if (isAdmin) return <AdminDashboard onExit={() => dispatch({ type: 'SET_VIEW', payload: 'welcome' })} />;
+      else {
+          dispatch({ type: 'SET_VIEW', payload: 'welcome' });
+          toast.error("管理者権限がありません");
+          return null;
+      }
+  }
 
   const Header = () => (
     <header className="bg-white sticky top-0 z-30 w-full border-b border-stone-100">
@@ -557,7 +581,7 @@ export const App: React.FC = () => {
   const publishedPerformanceAmpoules = products.performanceAmpoules.filter(a => a.isPublished !== false);
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900 font-sans selection:bg-stone-200">
+    <div className="h-screen overflow-y-auto bg-stone-50 text-stone-900 font-sans selection:bg-stone-200">
       <Toaster position="top-center" toastOptions={{ className: 'font-sans text-sm', duration: 3000 }} />
       <CartDrawer isOpen={state.isCartOpen} onClose={() => dispatch({ type: 'TOGGLE_CART', payload: false })} cart={state.cart} onRemoveItem={(index) => dispatch({ type: 'REMOVE_FROM_CART', payload: index })} />
       <GlobalChatModal isOpen={state.isChatOpen} onClose={() => dispatch({ type: 'TOGGLE_CHAT', payload: false })} chatHistory={state.chatHistory} chatInput={state.chatInput} onChatInputChange={(v) => dispatch({ type: 'SET_CHAT_INPUT', payload: v })} onSendChatMessage={handleSendChatMessage} isChatLoading={state.isChatLoading} onSuggestionClick={(q) => dispatch({ type: 'SET_CHAT_INPUT', payload: q })} currentView={state.currentView} selectedSerum={state.selectedSerum} selectedFoundationAmpoules={state.selectedFoundationAmpoules} selectedPerformanceAmpoules={state.selectedPerformanceAmpoules} />
@@ -615,7 +639,7 @@ export const App: React.FC = () => {
                 <p className="text-stone-500 text-sm">あなたの肌と好みに合わせた最適なレシピを設計します</p>
             </div>
 
-            <main className="flex-grow max-w-3xl mx-auto w-full p-6 md:p-12 pb-32">
+            <main className="flex-grow max-w-3xl mx-auto w-full p-6 md:p-12 pb-80">
                 <div className="space-y-12">
                     {/* STEP 1: TELL US ABOUT YOURSELF (INTEGRATED) */}
                     <ConsultationStep step={1} title="お客様について教えてください。">
@@ -794,7 +818,7 @@ export const App: React.FC = () => {
                         </ConsultationStep>
                     )}
 
-
+                    <div className="h-64"></div>
                 </div>
             </main>
 
@@ -834,7 +858,8 @@ export const App: React.FC = () => {
                                 <MedicalChartSummary report={state.medicalChartReport} isLoading={state.isMedicalChartLoading} onOpenModal={() => dispatch({ type: 'SET_MEDICAL_CHART_MODAL', payload: true })} onRegenerate={async () => {
                                     if (!state.selectedSerum) return;
                                     dispatch({ type: 'SET_MEDICAL_CHART_LOADING', payload: true });
-                                    try { if (state.consultationInput) dispatch({ type: 'SET_MEDICAL_CHART_REPORT', payload: await regenerateMedicalChart(state.consultationInput, state.selectedSerum, state.purchaseType === 'subscription' ? [...state.selectedFoundationAmpoules, ...state.selectedPerformanceAmpoules] : []) }); } catch(e) { console.error(e); } finally { dispatch({ type: 'SET_MEDICAL_CHART_LOADING', payload: false }); }
+                                    const allDynamicProducts = [...products.serums, ...products.foundationAmpoules, ...products.performanceAmpoules];
+                                    try { if (state.consultationInput) dispatch({ type: 'SET_MEDICAL_CHART_REPORT', payload: await regenerateMedicalChart(state.consultationInput, state.selectedSerum, state.purchaseType === 'subscription' ? [...state.selectedFoundationAmpoules, ...state.selectedPerformanceAmpoules] : [], allDynamicProducts) }); } catch(e) { console.error(e); } finally { dispatch({ type: 'SET_MEDICAL_CHART_LOADING', payload: false }); }
                                 }} />
                                 <div className="bg-white p-8 rounded-3xl border border-stone-200 shadow-sm relative overflow-hidden">
                                    <div className="absolute top-0 left-0 w-full h-1 bg-stone-100"></div>
@@ -856,7 +881,20 @@ export const App: React.FC = () => {
                                     <button onClick={() => { dispatch({ type: 'SET_PLAN_BEFORE_EDIT', payload: state }); dispatch({ type: 'SET_PLAN_SELECTION_MODAL', payload: true }); }} className="w-full border border-stone-200 text-stone-600 font-bold py-3 rounded-xl hover:bg-stone-50 transition-colors flex items-center justify-center gap-2 mb-8"><Edit size={16} />プランを編集</button>
                                     <hr className="border-stone-100 mb-6" />
                                     <div className="flex bg-stone-100 p-1 rounded-xl mb-6"><button onClick={() => dispatch({ type: 'SET_PURCHASE_TYPE', payload: 'subscription' })} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${state.purchaseType === 'subscription' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>定期配送</button><button onClick={() => dispatch({ type: 'SET_PURCHASE_TYPE', payload: 'one-time' })} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${state.purchaseType === 'one-time' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>都度購入</button></div>
-                                    <div className="flex justify-between items-end mb-6"><span className="font-bold text-stone-500">Total</span><span className="text-3xl font-bold text-stone-900">{calculateTotal.toLocaleString()}<span className="text-sm font-normal text-stone-400 ml-1">円(税抜)</span></span></div>
+                                    <div className="flex flex-col gap-1 mb-6">
+                                        <div className="flex justify-between items-end">
+                                            <span className="text-stone-500 text-sm">税抜価格</span>
+                                            <span className="text-stone-600 font-medium">{(calculateTotal / 1.1).toLocaleString(undefined, { maximumFractionDigits: 0 })} 円</span>
+                                        </div>
+                                        <div className="flex justify-between items-end">
+                                            <span className="text-stone-500 text-sm">消費税 (10%)</span>
+                                            <span className="text-stone-600 font-medium">{(calculateTotal - (calculateTotal / 1.1)).toLocaleString(undefined, { maximumFractionDigits: 0 })} 円</span>
+                                        </div>
+                                        <div className="flex justify-between items-end mt-2 pt-2 border-t border-stone-100">
+                                            <span className="font-bold text-stone-500">合計 (税込)</span>
+                                            <span className="text-3xl font-bold text-stone-900">{calculateTotal.toLocaleString()}<span className="text-sm font-normal text-stone-400 ml-1">円</span></span>
+                                        </div>
+                                    </div>
                                     <button onClick={() => { dispatch({ type: 'SET_CART', payload: createCartFromCurrentState() }); dispatch({ type: 'TOGGLE_CART', payload: true }); toast.success("カートに追加しました"); }} className="w-full bg-stone-900 text-white font-bold py-4 rounded-xl hover:bg-black transition-all shadow-lg flex items-center justify-center gap-2"><ShoppingCart size={18} />カートに追加</button>
                                 </div>
                            </div>
@@ -871,6 +909,60 @@ export const App: React.FC = () => {
       <PlanSelectionModal isOpen={state.isPlanSelectionModalOpen} onClose={() => dispatch({ type: 'SET_PLAN_SELECTION_MODAL', payload: false })} selectedSerum={state.selectedSerum} onSelectSerum={(s) => dispatch({ type: 'SET_SELECTED_SERUM', payload: s })} selectedFoundationAmpoules={state.selectedFoundationAmpoules} onToggleFoundationAmpoule={(a) => dispatch({ type: 'TOGGLE_FOUNDATION_AMPOULE', payload: a })} selectedPerformanceAmpoules={state.selectedPerformanceAmpoules} onTogglePerformanceAmpoule={(a) => dispatch({ type: 'TOGGLE_PERFORMANCE_AMPOULE', payload: a })} recommendationReasons={state.recommendationReasons} purchaseType={state.purchaseType} onSetPurchaseType={(type) => dispatch({ type: 'SET_PURCHASE_TYPE', payload: type })} availableSerums={publishedSerums} availableFoundationAmpoules={publishedFoundationAmpoules} availablePerformanceAmpoules={publishedPerformanceAmpoules} fullPlanScores={state.fullPlanScores} analyzedUserProducts={state.analyzedUserProducts} />
       <CameraCapture isOpen={state.isCameraOpen} onClose={() => dispatch({ type: 'SET_CAMERA_OPEN', payload: false })} onMediaCaptured={handleCameraCapture} mode={state.cameraMode} />
       <CompetitorReportModal isOpen={state.isCompetitorReportModalOpen} onClose={() => dispatch({ type: 'CLOSE_COMPETITOR_REPORT' })} competitor={state.selectedCompetitorReport} userPlan={state.fullPlanScores ? { name: 'EVOLUREプラン', scores: state.fullPlanScores } : null} />
+      
+      {/* Footer / Admin Access */}
+      <footer className="bg-stone-100 py-12 border-t border-stone-200">
+          <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-8">
+              <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                      <Cylinder size={16} className="text-stone-400" />
+                      <span className="font-serif font-bold text-stone-900 tracking-wider">EVOLURE</span>
+                  </div>
+                  <p className="text-xs text-stone-400">© 2026 EVOLURE Personal Skin Lab. All rights reserved.</p>
+              </div>
+              
+              <div className="flex items-center gap-6">
+                  {user ? (
+                      <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
+                              {user.photoURL ? (
+                                  <img src={user.photoURL} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-stone-200" referrerPolicy="no-referrer" />
+                              ) : (
+                                  <div className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-stone-500"><User size={16} /></div>
+                              )}
+                              <div className="flex flex-col">
+                                  <span className="text-xs font-bold text-stone-900">{user.displayName}</span>
+                                  <span className="text-[10px] text-stone-400">{isAdmin ? 'Administrator' : 'User'}</span>
+                              </div>
+                          </div>
+                          {isAdmin && (
+                              <button 
+                                  onClick={() => dispatch({ type: 'SET_VIEW', payload: 'admin' })}
+                                  className="text-xs font-bold text-stone-600 hover:text-stone-900 flex items-center gap-1 transition-colors"
+                              >
+                                  <SlidersHorizontal size={14} />
+                                  管理画面
+                              </button>
+                          )}
+                          <button 
+                              onClick={logout}
+                              className="text-xs font-bold text-red-500 hover:text-red-700 transition-colors"
+                          >
+                              ログアウト
+                          </button>
+                      </div>
+                  ) : (
+                      <button 
+                          onClick={login}
+                          className="text-xs font-bold text-stone-500 hover:text-stone-900 flex items-center gap-2 transition-colors"
+                      >
+                          <Lock size={14} />
+                          管理者ログイン
+                      </button>
+                  )}
+              </div>
+          </div>
+      </footer>
     </div>
   );
 };

@@ -111,6 +111,41 @@ export interface AdvancedProductAnalysis {
     citations: { uri: string; title: string; }[];
 }
 
+export type ConsultationInput = 
+  | { 
+      type: 'concerns'; 
+      ageGroup: string; 
+      skinType: string; 
+      skinConcerns: { [key: string]: number }; 
+      lifestyleFactors: string[]; 
+      knowledgeLevel: number;
+      troubleHistory: string;
+      concernTimings: string[];
+    } 
+  | { 
+      type: 'ideal'; 
+      ageGroup: string; 
+      skinType: string; 
+      idealSkin: string; 
+      skinConcerns: { [key: string]: number }; 
+      lifestyleFactors: string[]; 
+      knowledgeLevel: number; 
+      troubleHistory: string;
+      currentLacks: string[];
+    } 
+  | { 
+      type: 'investigate'; 
+      ageGroup: string; 
+      skinType: string; 
+      currentUserProducts: string[]; 
+      dissatisfactions: string[]; 
+      idealSkin: string; 
+      skinConcerns: { [key: string]: number }; 
+      knowledgeLevel: number; 
+      troubleHistory: string;
+      productUsageDuration: string;
+    };
+
 export interface FullConsultationResponse {
     recommendations: {
         serumId: string;
