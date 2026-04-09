@@ -153,11 +153,16 @@ export const sendChatMessageStream = async (chatSession: Chat | null, message: s
   }
 };
 
+// 2026-04-09: CEO決定により競合スコアリング機能を停止。法務・財務・ブランドリスクの観点から無効化。
 export const analyzeCompetitorProduct = async (
-    productNames: string[], 
-    skinConcerns: string[], 
+    productNames: string[],
+    skinConcerns: string[],
     evolurePlan?: { name: string; scores: Score }
 ): Promise<AnalyzedCompetitor[] | null> => {
+    // 機能停止: 常にnullを返す
+    console.warn('[DISABLED] analyzeCompetitorProduct is disabled by CEO decision (2026-04-09)');
+    return null;
+    /* --- 以下、元のコード（将来の透明ロジック版で参考にする） ---
     
     const evolurePlanString = evolurePlan
         ? `比較対象のEVOLUREプラン: ${evolurePlan.name} (各項目のスコア: ${(SCORE_CATEGORY_KEYS || []).map(key => `${String(key)}: ${evolurePlan.scores[key]}`).join(', ')})`
@@ -215,6 +220,7 @@ ${benchmarkDataString}
         console.error("Failed to get competitor analysis from Gemini:", error);
         return null;
     }
+    --- 元のコード終了 */
 };
 
 const ingredientAnalysisItemSchema = {
