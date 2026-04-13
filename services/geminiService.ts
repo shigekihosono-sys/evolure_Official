@@ -12,7 +12,6 @@ import {
     BENCHMARK_COMPETITORS,
     IDEAL_SKIN_GOALS as IDEAL_GOALS, 
     LIFESTYLE_FACTORS, 
-    INVESTIGATION_DISSATISFACTIONS as DISSATISFACTIONS, 
     TROUBLE_HISTORY_OPTIONS as TROUBLE_HISTORY, 
     CONCERN_TIMINGS, 
     CURRENT_LACKS, 
@@ -153,16 +152,11 @@ export const sendChatMessageStream = async (chatSession: Chat | null, message: s
   }
 };
 
-// 2026-04-09: CEO決定により競合スコアリング機能を停止。法務・財務・ブランドリスクの観点から無効化。
 export const analyzeCompetitorProduct = async (
-    productNames: string[],
-    skinConcerns: string[],
+    productNames: string[], 
+    skinConcerns: string[], 
     evolurePlan?: { name: string; scores: Score }
 ): Promise<AnalyzedCompetitor[] | null> => {
-    // 機能停止: 常にnullを返す
-    console.warn('[DISABLED] analyzeCompetitorProduct is disabled by CEO decision (2026-04-09)');
-    return null;
-    /* --- 以下、元のコード（将来の透明ロジック版で参考にする） ---
     
     const evolurePlanString = evolurePlan
         ? `比較対象のEVOLUREプラン: ${evolurePlan.name} (各項目のスコア: ${(SCORE_CATEGORY_KEYS || []).map(key => `${String(key)}: ${evolurePlan.scores[key]}`).join(', ')})`
@@ -220,7 +214,6 @@ ${benchmarkDataString}
         console.error("Failed to get competitor analysis from Gemini:", error);
         return null;
     }
-    --- 元のコード終了 */
 };
 
 const ingredientAnalysisItemSchema = {
@@ -260,28 +253,6 @@ const medicalChartSchema = {
     required: ['summaryBullets', 'knowledgeLevelRationale', 'patientSummary', 'prescriptionIntent', 'serumRationale', 'ampouleRationales', 'futureOutlook', 'usageInstructions', 'serumIngredientAnalysis', 'ampouleIngredientAnalysis']
 };
 
-export const analyzeProductsFromPhoto = async (base64Image: string): Promise<string[] | null> => {
-    const imagePart = { inlineData: { mimeType: 'image/jpeg', data: base64Image.split(',')[1] } };
-    const textPart = { text: `画像から化粧品のブランド名と製品名を特定し、'products'キーを持つJSON配列として返してください。` };
-    const response = await callGeminiWithRetry(
-        () => ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: { parts: [imagePart, textPart] },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: { products: { type: Type.ARRAY, items: { type: Type.STRING } } },
-                    required: ['products']
-                },
-            },
-        }),
-        "AIによる製品の分析に失敗しました。",
-        "AIサーバーが混み合っています。"
-    );
-    return JSON.parse(response.text).products || null;
-};
-
 export const extractIngredientsFromPhoto = async (base64Image: string): Promise<string[]> => {
     const imagePart = { inlineData: { mimeType: 'image/jpeg', data: base64Image.split(',')[1] } };
     const textPart = { text: `成分表示ラベルから全ての成分名を抽出し、'ingredients'キーを持つJSON配列として返してください。` };
@@ -302,6 +273,28 @@ export const extractIngredientsFromPhoto = async (base64Image: string): Promise<
         "AIサーバーが混み合っています。"
     );
     return JSON.parse(response.text).ingredients || [];
+};
+
+export const analyzeProductsFromPhoto = async (base64Image: string): Promise<string[]> => {
+    const imagePart = { inlineData: { mimeType: 'image/jpeg', data: base64Image.split(',')[1] } };
+    const textPart = { text: `画像に写っている化粧品やスキンケア製品の製品名を特定し、'products'キーを持つJSON配列として返してください。製品名が特定できない場合は空の配列を返してください。` };
+    const response = await callGeminiWithRetry(
+        () => ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: { parts: [imagePart, textPart] },
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: { products: { type: Type.ARRAY, items: { type: Type.STRING } } },
+                    required: ['products']
+                },
+            },
+        }),
+        "製品の特定に失敗しました。",
+        "AIサーバーが混み合っています。"
+    );
+    return JSON.parse(response.text).products || [];
 };
 
 export const validateVideoForSkinAnalysis = async (videoDataUrl: string): Promise<PhotoValidationResult> => {
@@ -509,9 +502,6 @@ const buildUserProfileString = (input: ConsultationInput): string => {
         }
     } else if (input.type === 'ideal') {
         parts.push(`- 目標: ${input.idealSkin}`);
-    } else if (input.type === 'investigate') {
-        parts.push(`- 使用中: ${input.currentUserProducts.join(', ')}`);
-        parts.push(`- 不満: ${input.dissatisfactions.join(', ')}`);
     }
     return parts.join('\n');
 };
@@ -545,29 +535,10 @@ export const runFullConsultation = async (
     // Fetch accumulated ingredient data from Firestore
     const accumulatedIngredients = await getAccumulatedIngredients();
 
-    const isInvestigate = input.type === 'investigate';
-    
     // Use dynamic master configs if provided, otherwise fallback to constants
     const skinConcerns = masterConfigs?.skin_concerns || SKIN_CONCERNS;
     const lifestyleFactors = masterConfigs?.lifestyle_factors || LIFESTYLE_FACTORS;
-    const dissatisfactions = masterConfigs?.dissatisfactions || DISSATISFACTIONS;
-    const schemaStructure = `
-{
-  "recommendations": { "serumId": "string", "ampouleIds": ["string"] },
-  "medicalChartReport": {
-    "summaryBullets": ["string"],
-    "patientSummary": "string",
-    "prescriptionIntent": "string",
-    "serumRationale": "string",
-    "ampouleRationales": [{ "ampouleId": "string", "rationale": "string" }],
-    "futureOutlook": "string",
-    "usageInstructions": "string",
-    "knowledgeLevelRationale": "string",
-    "serumIngredientAnalysis": [{ "name": "string", "description": "string", "timeframe": "string" }],
-    "ampouleIngredientAnalysis": [{ "name": "string", "description": "string", "timeframe": "string" }]
-  },
-  "competitorAnalysis": [{ "productName": "string", "scores": { "シミ・くすみ": 0, "シワ・小ジワ": 0, "ハリ・弾力": 0, "毛穴ケア": 0, "保湿持続性": 0 } }]
-}`;
+    const dissatisfactions = masterConfigs?.dissatisfactions || CURRENT_LACKS;
 
     const prompt = `
 高級スキンケアブランド「EVOLURE」のAI診断エンジンとして振る舞ってください。
@@ -575,13 +546,12 @@ export const runFullConsultation = async (
 **【重要ルール】**
 1. 美容液（Serum）およびアンプル（Ampoule）の「主要有効成分」は、それぞれすべて漏れなく抽出して記載してください（serumIngredientAnalysis, ampouleIngredientAnalysisにすべて含めること）。
 2. 成分の効能効果に関する説明文は、薬機法（医薬品医療機器等法）を厳守し、化粧品として認められる表現（「肌にうるおいを与える」「肌を整える」「健やかに保つ」「乾燥を防ぐ」など）に留めてください。病気の治療や予防、肌構造の根本的な変化を暗示する表現（「ニキビを治す」「シワを消す」「細胞を再生する」など）は絶対に使用しないでください。
-3. **【競合分析の制限】** \`competitorAnalysis\` 配列には、ユーザーが現在使用している製品（${isInvestigate ? input.currentUserProducts.join('、') : 'なし'}）のみを含めてください。ベンチマークとして提供した製品（ランコム、ポーラ等）は、スコアリングの基準としてのみ使用し、出力配列には絶対に含めないでください。
-4. **【必須出力】** 診断結果には、必ず「製品推奨（recommendations）」と「診断カルテ（medicalChartReport）」の両方を含めてください。特に診断カルテの \`summaryBullets\` は、ダッシュボードの表示に必須です。
-5. **【重要：ご使用方法の記載ルール】** 薬機法遵守のため、製品を「混ぜて使う」という表現は厳禁です。必ず以下の手順で説明してください：「アンプルを気になる箇所に塗った上で、美容液を顔全体に馴染ませてください」。この順番と方法を「ご使用方法（usageInstructions）」セクションに明記してください。
-6. **【重要：時間軸（timeframe）の記載ルール】** 薬機法遵守のため、「○週間で効果が出る」といった断定的な表現は避け、成分の特性に合わせた一般的な目安（例：2〜8週間など）を「個人差があります」という注釈と共に記載してください。
+3. **【必須出力】** 診断結果には、必ず「製品推奨（recommendations）」と「診断カルテ（medicalChartReport）」の両方を含めてください。特に診断カルテの \`summaryBullets\` は、ダッシュボードの表示に必須です。
+4. **【重要：ご使用方法の記載ルール】** 薬機法遵守のため、製品を「混ぜて使う」という表現は厳禁です。必ず以下の手順で説明してください：「アンプルを気になる箇所に塗った上で、美容液を顔全体に馴染ませてください」。この順番と方法を「ご使用方法（usageInstructions）」セクションに明記してください。
+5. **【重要：時間軸（timeframe）の記載ルール】** 薬機法遵守のため、「○週間で効果が出る」といった断定的な表現は避け、成分の特性に合わせた一般的な目安（例：2〜8週間など）を「個人差があります」という注釈と共に記載してください。
 
 知識レベル${input.knowledgeLevel}/5に合わせて詳細度を調整した、製品推奨、診断カルテ、および競合分析を含むレポートをJSONで出力してください。
-${isInvestigate ? `\n以下のJSONスキーマに厳密に従って出力してください:\n${schemaStructure}\n` : ''}
+
 ユーザー情報:
 ${userProfileString}
 
@@ -593,9 +563,7 @@ ${userProfileString}
 ベンチマーク（スコアリング基準用）:
 ${benchmarkDataString}
 `;
-    const config: GenerateContentParameters['config'] = isInvestigate 
-        ? { tools: [{ googleSearch: {} }] } 
-        : { responseMimeType: "application/json", responseSchema: {
+    const config: GenerateContentParameters['config'] = { responseMimeType: "application/json", responseSchema: {
             type: Type.OBJECT,
             properties: {
                 recommendations: { type: Type.OBJECT, properties: { serumId: { type: Type.STRING }, ampouleIds: { type: Type.ARRAY, items: { type: Type.STRING } } }, required: ["serumId", "ampouleIds"] },
@@ -610,7 +578,7 @@ ${benchmarkDataString}
         "AIサーバーが混み合っています。"
     );
     
-    let parsedData = isInvestigate ? extractJson(response.text) : JSON.parse(response.text);
+    let parsedData = JSON.parse(response.text);
     const citations = response.candidates?.[0]?.groundingMetadata?.groundingChunks
         ?.map(chunk => ({ uri: chunk.web?.uri || '', title: chunk.web?.title || '引用元情報' }))
         .filter(c => c.uri) ?? [];

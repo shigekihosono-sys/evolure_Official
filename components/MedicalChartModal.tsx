@@ -17,7 +17,7 @@ interface MedicalChartModalProps {
     skinType: string;
     skinConcerns: { [key: string]: number };
     knowledgeLevel: number;
-    consultationType: 'concerns' | 'ideal' | 'investigate' | null;
+    consultationType: 'concerns' | 'ideal' | null;
     idealSkinGoal: string;
   };
   products: CartItem[];
@@ -249,17 +249,7 @@ export const MedicalChartModal: React.FC<MedicalChartModalProps> = ({ isOpen, on
   }, [products]);
 
   const chartDataForAnalysis = useMemo(() => {
-    if (userInfo.consultationType !== 'investigate' || !analyzedUserProducts || !fullPlanScores) {
-      return null;
-    }
-
-    const data: { name: string; scores: Score }[] = [];
-    if (Array.isArray(analyzedUserProducts) && analyzedUserProducts.length > 0) {
-      data.push(...analyzedUserProducts);
-    }
-    data.push({ name: 'EVOLUREプラン', scores: fullPlanScores });
-    
-    return data;
+    return null;
   }, [userInfo.consultationType, analyzedUserProducts, fullPlanScores]);
 
   const handleAddToCartAndClose = () => {
@@ -360,7 +350,7 @@ export const MedicalChartModal: React.FC<MedicalChartModalProps> = ({ isOpen, on
                             }
                         </div>
                     </>
-                ) : userInfo.consultationType === 'ideal' || userInfo.consultationType === 'investigate' ? (
+                ) : userInfo.consultationType === 'ideal' ? (
                      <>
                         <h3 className="text-lg font-serif font-bold text-stone-900 mb-3 md:mb-4">なりたい肌の目標</h3>
                         <div className="p-4 md:p-5 bg-white rounded-2xl border border-stone-100 shadow-sm">

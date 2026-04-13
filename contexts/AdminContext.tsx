@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Serum, Ampoule, LogEntry, UserSession, LogEventType, ChatMessage, Product, MasterConfig, MasterConfigCategory } from '../types';
-import { SERUM_A, SERUM_B, SERUM_C, FOUNDATION_AMPOULES, PERFORMANCE_AMPOULES, SKIN_CONCERNS, IDEAL_SKIN_GOALS, LIFESTYLE_FACTORS, INVESTIGATION_DISSATISFACTIONS, TROUBLE_HISTORY_OPTIONS, CONCERN_TIMINGS, CURRENT_LACKS, PRODUCT_USAGE_DURATIONS } from '../constants';
+import { SERUM_A, SERUM_B, SERUM_C, FOUNDATION_AMPOULES, PERFORMANCE_AMPOULES, SKIN_CONCERNS, IDEAL_SKIN_GOALS, LIFESTYLE_FACTORS, TROUBLE_HISTORY_OPTIONS, CONCERN_TIMINGS, CURRENT_LACKS, PRODUCT_USAGE_DURATIONS } from '../constants';
 import { auth, googleProvider, db } from '../firebase';
 import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, getDocFromServer } from 'firebase/firestore';
@@ -203,9 +203,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             } catch (error) {
                 if (error instanceof Error && error.message.includes('the client is offline')) {
                     console.error("Please check your Firebase configuration. The client is offline.");
-                } else {
-                    console.error("Firebase connection test failed:", error);
                 }
+                // Skip logging for other errors, as this is simply a connection test.
             }
         };
         testConnection();
@@ -299,7 +298,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             ...SKIN_CONCERNS.map((label, i) => ({ category: 'skin_concerns' as MasterConfigCategory, label, order: i, isActive: true })),
             ...IDEAL_SKIN_GOALS.map((goal, i) => ({ category: 'ideal_goals' as MasterConfigCategory, label: goal.label, description: goal.description || '', order: i, isActive: true })),
             ...LIFESTYLE_FACTORS.map((label, i) => ({ category: 'lifestyle_factors' as MasterConfigCategory, label, order: i, isActive: true })),
-            ...INVESTIGATION_DISSATISFACTIONS.map((label, i) => ({ category: 'dissatisfactions' as MasterConfigCategory, label, order: i, isActive: true })),
             ...TROUBLE_HISTORY_OPTIONS.map((label, i) => ({ category: 'trouble_history' as MasterConfigCategory, label, order: i, isActive: true })),
             ...CONCERN_TIMINGS.map((label, i) => ({ category: 'concern_timings' as MasterConfigCategory, label, order: i, isActive: true })),
             ...CURRENT_LACKS.map((label, i) => ({ category: 'current_lacks' as MasterConfigCategory, label, order: i, isActive: true })),

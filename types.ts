@@ -132,18 +132,6 @@ export type ConsultationInput =
       knowledgeLevel: number; 
       troubleHistory: string;
       currentLacks: string[];
-    } 
-  | { 
-      type: 'investigate'; 
-      ageGroup: string; 
-      skinType: string; 
-      currentUserProducts: string[]; 
-      dissatisfactions: string[]; 
-      idealSkin: string; 
-      skinConcerns: { [key: string]: number }; 
-      knowledgeLevel: number; 
-      troubleHistory: string;
-      productUsageDuration: string;
     };
 
 export interface FullConsultationResponse {

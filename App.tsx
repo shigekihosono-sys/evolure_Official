@@ -5,10 +5,10 @@ import ReactMarkdown from 'react-markdown';
 
 import { Serum, Ampoule, CartItem, Score, Product, MedicalChartReport, AnalyzedCompetitor, IngredientLabAnalysis, AdvancedProductAnalysis, FullConsultationResponse, ChatMessage, ConsultationInput } from './types';
 import {
-  AGE_GROUPS, SKIN_CONCERNS, SCORE_CATEGORY_KEYS, SEVERITY_SCALE, KNOWLEDGE_SCALE, IDEAL_SKIN_GOALS, LIFESTYLE_FACTORS, INVESTIGATION_DISSATISFACTIONS, SKIN_TYPES, TROUBLE_HISTORY_OPTIONS, CONCERN_TIMINGS, CURRENT_LACKS, PRODUCT_USAGE_DURATIONS,
+  AGE_GROUPS, SKIN_CONCERNS, SCORE_CATEGORY_KEYS, SEVERITY_SCALE, KNOWLEDGE_SCALE, IDEAL_SKIN_GOALS, LIFESTYLE_FACTORS, SKIN_TYPES, TROUBLE_HISTORY_OPTIONS, CONCERN_TIMINGS, CURRENT_LACKS, PRODUCT_USAGE_DURATIONS,
   SERUM_A as DEFAULT_SERUM_A, SERUM_B as DEFAULT_SERUM_B, SERUM_C as DEFAULT_SERUM_C
 } from './constants';
-import { sendChatMessageStream, analyzeCompetitorProduct, analyzeSkinFromVideo, analyzeProductsFromPhoto, validateVideoForSkinAnalysis, analyzeIngredients, analyzeProductAdvanced, createChatSession, runFullConsultation, regenerateMedicalChart, extractScoresFromText } from './services/geminiService';
+import { sendChatMessageStream, analyzeCompetitorProduct, analyzeSkinFromVideo, validateVideoForSkinAnalysis, analyzeIngredients, analyzeProductAdvanced, createChatSession, runFullConsultation, regenerateMedicalChart, extractScoresFromText } from './services/geminiService';
 import { RadarChartComponent } from './components/RadarChartComponent';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { MedicalChartModal } from './components/MedicalChartModal';
@@ -31,7 +31,7 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 
 interface AppState {
     currentView: 'welcome' | 'consultation' | 'dashboard' | 'ingredientLab' | 'admin';
-    consultationType: 'concerns' | 'ideal' | 'investigate' | null;
+    consultationType: 'concerns' | 'ideal' | null;
     ageGroup: string;
     skinType: string;
     skinConcerns: { [key: string]: number };
@@ -73,7 +73,6 @@ interface AppState {
     troubleHistory: string;
     concernTimings: { [key: string]: boolean };
     currentLacks: { [key: string]: boolean };
-    productUsageDuration: string;
 }
 
 type Action =
@@ -86,10 +85,6 @@ type Action =
     | { type: 'SET_IDEAL_GOAL'; payload: string }
     | { type: 'TOGGLE_LIFESTYLE_FACTOR'; payload: string }
     | { type: 'SET_CONSULTATION_INPUT'; payload: ConsultationInput }
-    | { type: 'ADD_USER_PRODUCT'; payload: string }
-    | { type: 'REMOVE_USER_PRODUCT'; payload: number }
-    | { type: 'SET_USER_PRODUCT_INPUT'; payload: string }
-    | { type: 'TOGGLE_DISSATISFACTION'; payload: string }
     | { type: 'SET_ANALYZED_USER_PRODUCTS'; payload: AnalyzedCompetitor[] }
     | { type: 'SET_SELECTED_SERUM'; payload: Serum }
     | { type: 'SET_PURCHASE_TYPE'; payload: 'subscription' | 'one-time' }
@@ -122,7 +117,6 @@ type Action =
     | { type: 'SET_TROUBLE_HISTORY'; payload: string }
     | { type: 'TOGGLE_CONCERN_TIMING'; payload: string }
     | { type: 'TOGGLE_CURRENT_LACK'; payload: string }
-    | { type: 'SET_PRODUCT_USAGE_DURATION'; payload: string }
     | { type: 'SET_PLAN_BEFORE_EDIT'; payload: any }
     | { type: 'RESET_PLAN_CHANGES' };
 
@@ -168,8 +162,7 @@ const initialState: AppState = {
     cameraCaptureHandler: null,
     troubleHistory: '',
     concernTimings: {},
-    currentLacks: {},
-    productUsageDuration: ''
+    currentLacks: {}
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -187,14 +180,6 @@ function reducer(state: AppState, action: Action): AppState {
             else newFactors[action.payload] = true;
             return { ...state, lifestyleFactors: newFactors };
         case 'SET_CONSULTATION_INPUT': return { ...state, consultationInput: action.payload };
-        case 'ADD_USER_PRODUCT': return { ...state, currentUserProducts: [...state.currentUserProducts, action.payload] };
-        case 'REMOVE_USER_PRODUCT': return { ...state, currentUserProducts: state.currentUserProducts.filter((_, i) => i !== action.payload) };
-        case 'SET_USER_PRODUCT_INPUT': return { ...state, currentUserProductInput: action.payload };
-        case 'TOGGLE_DISSATISFACTION':
-            const newDissatisfactions = { ...state.dissatisfactions };
-            if (newDissatisfactions[action.payload]) delete newDissatisfactions[action.payload];
-            else newDissatisfactions[action.payload] = true;
-            return { ...state, dissatisfactions: newDissatisfactions };
         case 'SET_ANALYZED_USER_PRODUCTS': return { ...state, analyzedUserProducts: action.payload };
         case 'SET_SELECTED_SERUM': return { ...state, selectedSerum: action.payload };
         case 'SET_PURCHASE_TYPE': return { ...state, purchaseType: action.payload };
@@ -260,7 +245,6 @@ function reducer(state: AppState, action: Action): AppState {
             if (newLacks[action.payload]) delete newLacks[action.payload];
             else newLacks[action.payload] = true;
             return { ...state, currentLacks: newLacks };
-        case 'SET_PRODUCT_USAGE_DURATION': return { ...state, productUsageDuration: action.payload };
         default: return state;
     }
 }
@@ -287,7 +271,7 @@ export const App: React.FC = () => {
 
   const dissatisfactionsList = useMemo(() => {
     const list = masterConfigs.filter(c => c.category === 'dissatisfactions' && c.isActive).map(c => c.label);
-    return list.length > 0 ? list : INVESTIGATION_DISSATISFACTIONS;
+    return list.length > 0 ? list : CURRENT_LACKS;
   }, [masterConfigs]);
 
   const troubleHistoryList = useMemo(() => {
@@ -360,7 +344,7 @@ export const App: React.FC = () => {
     return cart.reduce((sum, item) => sum + (item.priceAtPurchase ?? item.product.price) * item.quantity, 0);
   }, [createCartFromCurrentState]);
 
-  const handleStartConsultation = (type: 'concerns' | 'ideal' | 'investigate') => {
+  const handleStartConsultation = (type: 'concerns' | 'ideal') => {
     logEvent(currentSessionId, 'VIEW_STEP', { step: 'consultation_start', type });
     dispatch({ type: 'SET_CONSULTATION_TYPE', payload: type });
     dispatch({ type: 'SET_VIEW', payload: 'consultation' });
@@ -483,7 +467,6 @@ export const App: React.FC = () => {
                     }
                 }
             }
-            if (response.competitorAnalysis) dispatch({ type: 'SET_ANALYZED_USER_PRODUCTS', payload: response.competitorAnalysis });
             dispatch({ type: 'SET_CART', payload: createCartFromCurrentState() });
         } else throw new Error("Invalid response");
       } catch (error) { toast.error("診断の生成に失敗しました。"); dispatch({ type: 'SET_VIEW', payload: 'welcome' }); }
@@ -511,14 +494,7 @@ export const App: React.FC = () => {
               skinConcerns: state.skinConcerns,
               lifestyleFactors: Object.keys(state.lifestyleFactors),
               currentLacks: Object.keys(state.currentLacks)
-          } : {}),
-           ...(state.consultationType === 'investigate' ? {
-              currentUserProducts: state.currentUserProducts,
-              dissatisfactions: Object.keys(state.dissatisfactions),
-              idealSkin: idealGoalsList.find(g => g.id === state.selectedIdealGoal)?.label || '',
-              skinConcerns: state.skinConcerns,
-              productUsageDuration: state.productUsageDuration
-          } : {}),
+          } : {})
       } as any;
       dispatch({ type: 'SET_CONSULTATION_INPUT', payload: input });
       runFullConsultationFlow(input);
@@ -594,7 +570,7 @@ export const App: React.FC = () => {
                 <h1 onClick={handleLogoClick} className="text-6xl md:text-7xl font-serif font-medium text-stone-900 tracking-tight cursor-default select-none leading-tight">Science meets<br/>Personalization.</h1>
                 <div className="space-y-2 text-stone-500 font-medium"><p>AIによる多角的な肌分析で、あなただけのスキンケアレシピを。</p><p>EVOLURE Personal Skin Labへようこそ。</p></div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
                 <button onClick={() => handleStartConsultation('concerns')} className="bg-white p-8 rounded-3xl border border-stone-100 shadow-lg shadow-stone-100/50 hover:shadow-xl hover:shadow-stone-200/50 hover:-translate-y-1 transition-all duration-300 text-left group flex flex-col h-full">
                     <div className="w-14 h-14 bg-stone-100 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-stone-900 group-hover:text-white transition-colors"><User size={28} strokeWidth={1.5} /></div>
                     <h3 className="text-xl font-bold text-stone-900 mb-3 font-serif">肌悩みから</h3>
@@ -605,12 +581,6 @@ export const App: React.FC = () => {
                     <div className="w-14 h-14 bg-stone-100 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-stone-900 group-hover:text-white transition-colors"><Target size={28} strokeWidth={1.5} /></div>
                     <h3 className="text-xl font-bold text-stone-900 mb-3 font-serif">理想の肌から</h3>
                     <p className="text-sm text-stone-500 leading-relaxed mb-8 flex-grow">なりたい肌のイメージとライフスタイルから、未来を見据えたプランを設計します。</p>
-                    <div className="flex items-center gap-2 text-xs font-bold tracking-widest text-stone-900 uppercase mt-auto group-hover:gap-3 transition-all">START <ArrowRight size={14} /></div>
-                </button>
-                <button onClick={() => handleStartConsultation('investigate')} className="bg-white p-8 rounded-3xl border border-stone-100 shadow-lg shadow-stone-100/50 hover:shadow-xl hover:shadow-stone-200/50 hover:-translate-y-1 transition-all duration-300 text-left group flex flex-col h-full">
-                    <div className="w-14 h-14 bg-stone-100 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-stone-900 group-hover:text-white transition-colors"><Search size={28} strokeWidth={1.5} /></div>
-                    <h3 className="text-xl font-bold text-stone-900 mb-3 font-serif">現在の製品から</h3>
-                    <p className="text-sm text-stone-500 leading-relaxed mb-8 flex-grow">使用中の製品と比較し、足りない要素を補完するアップグレードプランを提案します。</p>
                     <div className="flex items-center gap-2 text-xs font-bold tracking-widest text-stone-900 uppercase mt-auto group-hover:gap-3 transition-all">START <ArrowRight size={14} /></div>
                 </button>
             </div>
@@ -729,26 +699,6 @@ export const App: React.FC = () => {
                                     ))}
                                 </div>
                             </div>
-                        ) : state.consultationType === 'investigate' ? (
-                             <div className="space-y-6">
-                                <label className="block text-sm font-bold text-stone-600 mb-3">現在使用中の製品名</label>
-                                <div className="flex gap-2 mb-4">
-                                    <input type="text" value={state.currentUserProductInput} onChange={e => dispatch({ type: 'SET_USER_PRODUCT_INPUT', payload: e.target.value })} placeholder="例: SHISEIDO アルティミューン" className="flex-grow p-4 border border-stone-200 rounded-xl focus:ring-2 focus:ring-stone-900 bg-white" />
-                                    <button onClick={() => { if (state.currentUserProductInput.trim()) { dispatch({ type: 'ADD_USER_PRODUCT', payload: state.currentUserProductInput }); dispatch({ type: 'SET_USER_PRODUCT_INPUT', payload: '' }); } }} className="bg-stone-900 text-white px-6 rounded-xl font-bold hover:bg-black">追加</button>
-                                    <button onClick={() => {
-                                        dispatch({ type: 'SET_CAMERA_HANDLER', payload: (url) => {
-                                            toast.loading('解析中...');
-                                            analyzeProductsFromPhoto(url).then(products => { if (products) { products.forEach(p => dispatch({ type: 'ADD_USER_PRODUCT', payload: p })); toast.dismiss(); } });
-                                        }});
-                                        dispatch({ type: 'SET_CAMERA_MODE', payload: 'photo' }); dispatch({ type: 'SET_CAMERA_OPEN', payload: true });
-                                    }} className="bg-white border border-stone-200 text-stone-800 px-4 rounded-xl"><Camera size={20} /></button>
-                                </div>
-                                <div className="space-y-2">
-                                    {state.currentUserProducts.map((p, i) => (
-                                        <div key={i} className="flex justify-between items-center bg-white p-3 rounded-xl border border-stone-200 shadow-sm"><span className="font-bold text-stone-800">{p}</span><button onClick={() => dispatch({ type: 'REMOVE_USER_PRODUCT', payload: i })} className="text-stone-400 hover:text-red-500"><X size={18}/></button></div>
-                                    ))}
-                                </div>
-                             </div>
                         ) : (
                              <div className="space-y-4">
                                 {idealGoalsList.map(goal => (
@@ -772,16 +722,6 @@ export const App: React.FC = () => {
                                     ))}
                                 </div>
                             </div>
-                            {state.consultationType === 'investigate' && (
-                                <div>
-                                    <label className="block text-sm font-bold text-stone-600 mb-3">現在の製品への不満点</label>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {dissatisfactionsList.map(item => (
-                                            <button key={item} onClick={() => dispatch({ type: 'TOGGLE_DISSATISFACTION', payload: item })} className={`p-4 rounded-xl border text-left font-medium transition-all ${state.dissatisfactions[item] ? 'bg-red-50 border-red-200 text-red-700 shadow-sm ring-1 ring-red-200' : 'bg-white border-stone-200 text-stone-600 hover:border-stone-400'}`}>{item}</button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
                             <div>
                                 <label className="block text-sm font-bold text-stone-600 mb-3">過去の肌トラブル経験</label>
                                 <div className="grid grid-cols-1 gap-3">
@@ -796,12 +736,6 @@ export const App: React.FC = () => {
                     {/* STEP 4: DETAILED CONTEXT (CONDITIONALLY VISIBLE) */}
                     {state.knowledgeLevel >= 3 && (
                         <ConsultationStep step={4} title="追加の分析コンテキスト">
-                            {state.consultationType === 'investigate' ? (
-                                <div>
-                                    <label className="block text-sm font-bold text-stone-600 mb-3">使用期間</label>
-                                    <select className="w-full p-4 border border-stone-200 rounded-xl bg-white" value={state.productUsageDuration} onChange={e => dispatch({ type: 'SET_PRODUCT_USAGE_DURATION', payload: e.target.value })}><option value="">選択してください</option>{usageDurationsList.map(d => <option key={d} value={d}>{d}</option>)}</select>
-                                </div>
-                            ) : (
                                 <div className="space-y-8">
                                     <div>
                                         <label className="block text-sm font-bold text-stone-600 mb-3">悩みが気になるタイミング</label>
@@ -814,7 +748,6 @@ export const App: React.FC = () => {
                                         </div>
                                     )}
                                 </div>
-                            )}
                         </ConsultationStep>
                     )}
 

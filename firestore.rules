@@ -21,6 +21,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
     
+    match /test/{document=**} {
+      allow read: if true;
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       // Only allow users to create their own profile with 'user' role, or admin can do anything
